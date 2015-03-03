@@ -21,34 +21,24 @@ public class Main {
 	 * Change de modele
 	 */
 
-	private static int SIMULATION_NUMBER = 100000000;
+	private static int SIMULATION_NUMBER = 100000;
 
-	static double mur[][] = new double[2][6];
-	static double isolant[][] = new double[2][4];
-
-	int ligne = 0;
-
-	double dx = 4; // cm
-	static double dt = 0.1; // s
-
+	static double mur[][] = new double[2][10];
+	
+	static double dx = 4; // cm
+	static double dt = 1; // s
 	static double T0 = 20; // ºC
 	static double T1 = 55; // ºC
-
-
 	// La conductivité thermique do matériau en W/(m.k)
-	double lambdaLV = 0.04; // Laine de verre
-	double lambdaB = 0.84; // Brique
-	double lambdaG = 2.2; // Granite
 	
-	static double Li = 0.04, Lm = (0.84+2.2)/2;
-	static double pi = 30, pm = (1400+2700)/2;
-	static double ci = 900, cm = (840+790)/2;
+	static double Li = 0.04, Lm = 2.2;
+	static double pi = 30,   pm = 2700;
+	static double ci = 900,  cm = 790;
 	
 	// (Le/pc)
 	static double Cm = (Lm*dt)/(pm*cm);   // C du mur
 	static double Ci = (Li*dt)/(pi*ci);  // C du isolant
-
-
+	static double EPSILON = 0.0000001;
 	
 	/**
 	 * 
@@ -60,45 +50,77 @@ public class Main {
 	 * @return T(x,t+e)
 	 */
 	
-	public static double newTemperature(double g, double t, double d, double C) {
-		return t + C*((g+d-2*t)/16);
+	public static double newTemperature(double gauche, double t, double droite, double C) {
+		return t + C*((gauche+droite-(2*t))/(dt*dt));
 	}
 
-	public static void simulation(int turn){
+	public static void simulation(int turn){	
 		
-		
-		mur[turn][0] = newTemperature(T1, mur[1-turn][0], mur[1-turn][1], Cm);
-		
-		for(int i=1;i<5;i++){
-			mur[turn][i] = newTemperature(mur[1-turn][i-1], mur[1-turn][i], mur[1-turn][i+1], Cm);
+		for(int i=1;i<9;i++){
+			if(i < 6)
+				mur[turn][i] = newTemperature(mur[turn][i-1], mur[1-turn][i], mur[1-turn][i+1], Cm);
+			else if(i >= 6)
+				mur[turn][i] = newTemperature(mur[turn][i-1], mur[1-turn][i], mur[1-turn][i+1], Ci);
 		}
-		
-		// mur - isolant - C
-		
-		mur[turn][5] = newTemperature(mur[1-turn][4], mur[1-turn][5], isolant[1-turn][0], Cm);
-		isolant[turn][3] = newTemperature(mur[1-turn][5], isolant[1-turn][0], isolant[1-turn][1], Ci);
-		
-		for(int i=1;i<3;i++){
-			isolant[turn][i] = newTemperature(isolant[1-turn][i-1], isolant[1-turn][i], isolant[1-turn][i+1], Ci);
-		}
-
-		isolant[turn][3] = newTemperature(isolant[1-turn][2], isolant[1-turn][3], T0, Ci);
+		mur[turn][9] = newTemperature(mur[1-turn][8], mur[1-turn][9], T0, Ci);
 	}
 
+	public static void initTemp(){
+
+		mur[0][0] = 110;
+		mur[1][0] = 110;
+		for(int i=1;i<10;i++){
+			mur[0][i] = 20;
+			mur[1][i] = 20;
+		}
+	}
+		
 	public static void main(String[] args) {
-
-		int turn = 1;
-		System.out.println("Cm = "+ Cm);
-		System.out.println("Ci = "+ Ci);
-		Cm = 0.0009;   // C du mur
-		Ci = 0.001;  // C du isolant
-		System.out.println("Cm = "+ Cm);
-		System.out.println("Ci = "+ Ci);
 		
+		initTemp();
+		
+		int instanteOfChange = -1;
+		boolean notChanged = true;
+		
+	    JavaWebSocketServer.getInstance();// Init the server.
+	    try {
+			Thread.sleep(10000);
+		} catch (InterruptedException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+		int turn = 1;
+		//Redefinition of Cm and Ci
+		Cm = 0.000009;
+		Ci = 0.00001;
+		//long tempoInicial = System.currentTimeMillis();  
 		for (int i = 0; i < SIMULATION_NUMBER; i++) {
 			simulation(turn);
-			Sortie.print(mur, isolant, turn);
+			if(mur[turn][6]-mur[1-turn][6] >= EPSILON && notChanged){
+				notChanged = false;
+				instanteOfChange = i;
+			}
+			
+			if(i % 500 == 0 ){
+				Sortie.print(mur, turn);
+				for (int j=0; j<10; j++) {
+		    		String message = "<elt>";
+		    		message += "<time>" + i + "</time>";
+		    		message += "<X>" + j + "</X>";
+		    		message += "<value>" + ((int) mur[turn][j]) + "</value>";
+		    		message += "</elt>";
+		    		
+		    		JavaWebSocketServer.getInstance().broadcastMessage(message);
+		    	}
+			}
 			turn = 1 - turn;
 		}
+		//long tempoFinal = System.currentTimeMillis();  
+		//System.out.println( tempoFinal - tempoInicial ); 
+		
+		System.out.println("Instant of change = "+instanteOfChange);
+		System.out.println("Cm = "+ Cm);
+		System.out.println("Ci = "+ Ci);	
+	    System.out.println("fin simulation");
 	}
 }
