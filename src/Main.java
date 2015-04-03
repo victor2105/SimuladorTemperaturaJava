@@ -1,126 +1,178 @@
 import java.io.PrintWriter;
+import java.util.Scanner;
+import java.util.concurrent.BrokenBarrierException;
+import java.util.concurrent.CyclicBarrier;
+
+/**
+ * 
+ * @author Victor Henrique dos Santos
+ *
+ */
 
 public class Main {
 
-	// Tl = 100 - Tr = 20
-
-	/**
-	 * 1 Une Thread Data - 3 Março
-	 */
-
-	/**
-	 * 2 - Barrier - Use Barrier Java
-	 * 
-	 */
-
-	/**
-	 * RdV - Semaphore - Plus rapide / Muniteur - Plus facile
-	 */
-
-	/**
-	 * Change de modele
-	 */
-
 	private static int SIMULATION_NUMBER = 100000;
+	private static int instanteOfChange = -1;
+	private static boolean hasChanged = false;
 
-	static double mur[][] = new double[2][10];
-	
-	static double dx = 4; // cm
-	static double dt = 1; // s
-	static double T0 = 20; // ºC
-	static double T1 = 55; // ºC
-	// La conductivité thermique do matériau en W/(m.k)
-	
-	static double Li = 0.04, Lm = 2.2;
-	static double pi = 30,   pm = 2700;
-	static double ci = 900,  cm = 790;
-	
+	private final static double mur[][] = new double[2][9];
+	private static int turn = 1;
+	private final static double dx = 0.04; // cm
+	private final static double dt = 600; // s
+	private final static double T0 = 20; // C
+	private final static double T1 = 55; // C
+	// La conductivite thermique do materiau en W/(m.k)
+
+	static double Li = 0.04, Lm = 0.84;
+	static double pi = 30, pm = 1400;
+	static double ci = 900, cm = 840;
+
 	// (Le/pc)
-	static double Cm = (Lm*dt)/(pm*cm);   // C du mur
-	static double Ci = (Li*dt)/(pi*ci);  // C du isolant
-	static double EPSILON = 0.0000001;
+	private final static double Cm = (Lm * dt) / (pm * cm * dx * dx); // C du
+																		// mur
+	private final static double Ci = (Li * dt) / (pi * ci * dx * dx); // C du
+																		// isolant
+
 	
+	private static CyclicBarrier barrier;
+	private static CyclicBarrier barrierOfEndExecution;
+
+	private static int iterations = 1;
+	private static int hour;
+
+	static long tempoInicial;
+	static long tempoFinal;
+
 	/**
 	 * 
 	 * T(x,t+e) = T(x,t) + (Le/pc)*((T(x+dx) + T(x-dx) + 2T(x))/(dx^2)) ou
-	 * T(x,t+e) = T(x,t) +    C   *((T(x+dx) + T(x-dx) + 2T(x))/(dx^2))
-	 * @param g
-	 * @param m
-	 * @param d
+	 * T(x,t+e) = T(x,t) + C *((T(x+dx) + T(x-dx) + 2T(x))/(dx^2))
+	 * 
+	 * @param gauche
+	 * @param temp
+	 * @param droite
 	 * @return T(x,t+e)
 	 */
-	
-	public static double newTemperature(double gauche, double t, double droite, double C) {
-		return t + C*((gauche+droite-(2*t))/(dt*dt));
+
+	public static double newTemperature(double gauche, double t, double droite,
+			double C) {
+		return t + C * ((gauche + droite - (2 * t)));
 	}
 
-	public static void simulation(int turn){	
-		
-		for(int i=1;i<9;i++){
-			if(i < 6)
-				mur[turn][i] = newTemperature(mur[turn][i-1], mur[1-turn][i], mur[1-turn][i+1], Cm);
-			else if(i >= 6)
-				mur[turn][i] = newTemperature(mur[turn][i-1], mur[1-turn][i], mur[1-turn][i+1], Ci);
+	/**
+	 * 
+	 * @author Victor Henrique dos Santos
+	 *
+	 */
+
+	// Runnable of simulator
+	static class Simulator implements Runnable {
+
+		private int identity;
+
+		public Simulator(int id) {
+			identity = id;
 		}
-		mur[turn][9] = newTemperature(mur[1-turn][8], mur[1-turn][9], T0, Ci);
-	}
 
-	public static void initTemp(){
+		@Override
+		public void run() {
+			int i = this.identity;
 
-		mur[0][0] = 110;
-		mur[1][0] = 110;
-		for(int i=1;i<10;i++){
-			mur[0][i] = 20;
-			mur[1][i] = 20;
+			for (int j = 0; j < SIMULATION_NUMBER; j++) {
+				if (i < 5) {
+					mur[turn][i] = newTemperature(mur[1 - turn][i - 1],
+							mur[1 - turn][i], mur[1 - turn][i + 1], Cm);
+				} else if (i == 5) {
+					mur[turn][i] = mur[1 - turn][5]
+							+ (Cm * (mur[1 - turn][4] - mur[1 - turn][5]) + Ci
+									* (mur[1 - turn][6] - mur[1 - turn][5]));
+				} else if (i > 5 && i < 8) {
+					mur[turn][i] = newTemperature(mur[1 - turn][i - 1],
+							mur[1 - turn][i], mur[1 - turn][i + 1], Ci);
+				}
+				if (i == 7) {
+					if (((int) mur[turn][i]) == 21 && !hasChanged) {
+						instanteOfChange = j;
+						hasChanged = true;
+					}
+				}
+
+				iterations = j + 1;
+
+				// Barrier
+				try {
+					barrier.await();
+				} catch (InterruptedException ex) {
+					return;
+				} catch (BrokenBarrierException ex) {
+					return;
+				}
+			}
+
+			// Barrier
+			try {
+				barrierOfEndExecution.await();
+			} catch (InterruptedException ex) {
+				return;
+			} catch (BrokenBarrierException ex) {
+				return;
+			}
+
 		}
 	}
-		
+
+	// Inictialization of value
+	public static void initTemp() {
+
+		mur[0][0] = 2 * T1;
+		mur[1][0] = 2 * T1;
+		for (int i = 1; i < 9; i++) {
+			mur[0][i] = T0;
+			mur[1][i] = T0;
+		}
+	}
+
+	public static void solver() {
+		// Barrier configuration
+		int numberOfThreads = 7;
+		barrier = new CyclicBarrier(numberOfThreads, new Runnable() {
+			public void run() {
+				if (iterations % 6 == 0 && hour < 10) {
+					hour++;
+					Sortie.print(hour, mur, turn);
+				}
+				turn = 1 - turn;
+			}
+		});
+
+		// Used to count the execution time
+		barrierOfEndExecution = new CyclicBarrier(numberOfThreads,
+				new Runnable() {
+					@Override
+					public void run() {
+						tempoFinal = System.currentTimeMillis();
+						System.out.println("Execution time: "
+								+ (tempoFinal - tempoInicial));
+					}
+				});
+
+		// Starting all threads
+		for (int i = 0; i < numberOfThreads; i++) {
+			new Thread(new Simulator(i + 1)).start();
+		}
+	}
+
 	public static void main(String[] args) {
-		
+
 		initTemp();
+
+		tempoInicial = System.currentTimeMillis();
+
+		Sortie.print(0, mur, turn);
+
+		// Solution
+		solver();
+
 		
-		int instanteOfChange = -1;
-		boolean notChanged = true;
-		
-	    JavaWebSocketServer.getInstance();// Init the server.
-	    try {
-			Thread.sleep(10000);
-		} catch (InterruptedException e) {
-			// TODO Auto-generated catch block
-			e.printStackTrace();
-		}
-		int turn = 1;
-		//Redefinition of Cm and Ci
-		Cm = 0.000009;
-		Ci = 0.00001;
-		//long tempoInicial = System.currentTimeMillis();  
-		for (int i = 0; i < SIMULATION_NUMBER; i++) {
-			simulation(turn);
-			if(mur[turn][6]-mur[1-turn][6] >= EPSILON && notChanged){
-				notChanged = false;
-				instanteOfChange = i;
-			}
-			
-			if(i % 500 == 0 ){
-				Sortie.print(mur, turn);
-				for (int j=0; j<10; j++) {
-		    		String message = "<elt>";
-		    		message += "<time>" + i + "</time>";
-		    		message += "<X>" + j + "</X>";
-		    		message += "<value>" + ((int) mur[turn][j]) + "</value>";
-		    		message += "</elt>";
-		    		
-		    		JavaWebSocketServer.getInstance().broadcastMessage(message);
-		    	}
-			}
-			turn = 1 - turn;
-		}
-		//long tempoFinal = System.currentTimeMillis();  
-		//System.out.println( tempoFinal - tempoInicial ); 
-		
-		System.out.println("Instant of change = "+instanteOfChange);
-		System.out.println("Cm = "+ Cm);
-		System.out.println("Ci = "+ Ci);	
-	    System.out.println("fin simulation");
 	}
 }
